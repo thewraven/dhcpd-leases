@@ -38,7 +38,7 @@ var (
 func ParseLeases(reader io.ReadCloser) ([]Lease, error) {
 	defer reader.Close()
 	scan := bufio.NewScanner(reader)
-	var leases []Lease
+	leases := make(map[string]Lease)
 	lease := Lease{}
 	for scan.Scan() {
 		line := scan.Text()
@@ -46,12 +46,16 @@ func ParseLeases(reader io.ReadCloser) ([]Lease, error) {
 			continue
 		}
 		if isEndOfLease(line) {
-			leases = append(leases, lease)
+			if !strings.Contains(lease.Binding, "active") {
+				lease = Lease{}
+				continue
+			}
+			leases[lease.IP] = lease
+
 			lease = Lease{}
 			continue
 		}
 		var err error
-		fmt.Println(line)
 		switch {
 		case strings.Contains(line, "lease"):
 			err = parseLease(strings.TrimSpace(line), &lease)
@@ -76,7 +80,11 @@ func ParseLeases(reader io.ReadCloser) ([]Lease, error) {
 			fmt.Println(err)
 		}
 	}
-	return leases, nil
+	var nl []Lease
+	for _, l := range leases {
+		nl = append(nl, l)
+	}
+	return nl, nil
 }
 
 func sanitize(attr string) string {
@@ -175,10 +183,10 @@ func parseLease(line string, lease *Lease) error {
 }
 
 func parseBinding(line string, lease *Lease) error {
-	parts := strings.Split(line, " ")
-	if len(parts) < 3 {
-		return errMalformed
+	if lease.Binding != "" {
+		return nil
 	}
-	lease.Binding = sanitize(parts[2])
+	parts := strings.Split(line, " ")
+	lease.Binding = sanitize(parts[len(parts)-1])
 	return nil
 }
